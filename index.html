@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 更新網站標題為 GSCNuigurumiRoulette -->
+    <title>ぬいぐるみ輪盤抽籤器 | GSCNuigurumiRoulette</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 設定字體為 Inter，並提供回退字體 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background: #f7f3f3; /* 淺灰背景 */
+        }
+        /* 自定義 spinning 動畫 */
+        @keyframes spin {
+            /* 讓滾動看起來更像在隨機移動 */
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-100%); }
+        }
+        /* 修正 2: 提高動畫頻率，使滾動看起來更連續 */
+        .spinning {
+            animation: spin 0.05s linear infinite; 
+        }
+        /* 隱藏原生滾動條 (保留) */
+        #dollList::-webkit-scrollbar {
+            display: none;
+        }
+        #dollList {
+            -ms-overflow-style: none;  /* IE and Edge */
+            /* 修正 2: 允許滾動 (auto)，但隱藏滾動條 */
+            overflow-y: auto; 
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-2xl bg-white shadow-2xl rounded-xl p-6 md:p-10 border-4 border-purple-500/50">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">
+            <span class="text-indigo-600">ぬいぐるみ</span> 抽籤
+        </h1>
+        <p id="dollCountText" class="text-center text-gray-500 mb-8">
+            抽出今天要帶出門的幸運兒！
+        </p>
+
+        <!-- ぬいぐるみ清單編輯器 -->
+        <div class="bg-gray-100 p-4 rounded-lg mb-6 shadow-inner">
+            <h3 class="text-lg font-semibold text-gray-700 mb-3 flex items-center">
+                ぬいぐるみ清單編輯器
+                <span id="editToggle" class="ml-2 text-sm text-purple-500 cursor-pointer hover:text-purple-700"> [隱藏/顯示]</span>
+            </h3>
+            <div id="editorContent" class="space-y-4 transition-all duration-300">
+                <!-- 新增ぬいぐるみ區 - 修正為手機上換行顯示 -->
+                <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2 mb-2 text-sm">
+                    <input type="text" id="dollNameInput" placeholder="名稱 (例如: 高松燈)" 
+                           class="flex-grow p-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <div class="flex space-x-2">
+                        <input type="text" id="dollBandInput" placeholder="團體 (Band)" 
+                            class="w-full md:w-24 p-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                        <input type="text" id="dollSeriesInput" placeholder="系列 (Series)" 
+                            class="w-full md:w-24 p-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    </div>
+                    <button id="addDollButton" onclick="addDoll()" 
+                            class="bg-purple-500 text-white py-2 md:py-0 px-4 rounded-md hover:bg-purple-600 transition duration-200 flex-shrink-0">
+                        新增
+                    </button>
+                </div>
+
+                <!-- 當前清單 -->
+                <div class="max-h-32 overflow-y-auto border border-gray-300 rounded-md p-2 bg-white">
+                    <ul id="editableList" class="divide-y divide-gray-200">
+                        <!-- 可編輯列表項目將由 JS 填充 -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 篩選器 Checkbox 區塊 (已新增切換開關) -->
+        <div class="bg-indigo-50 p-4 rounded-lg mb-6 shadow-md border border-indigo-200">
+            <h3 class="text-lg font-semibold text-indigo-700 mb-3 flex items-center">
+                選擇參與抽籤的ぬいぐるみ
+                <span id="filterToggle" class="ml-2 text-sm text-indigo-500 cursor-pointer hover:text-indigo-700"> [隱藏/顯示]</span>
+            </h3>
+            <div id="filterContent" class="space-y-4 transition-all duration-300">
+                <div id="filterCheckboxes" class="max-h-60 overflow-y-auto space-y-3 p-1">
+                    <!-- Checkboxes 將由 JS 填充 -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- 輪盤區域 -->
+        <div class="relative h-64 overflow-hidden rounded-lg border-2 border-gray-300 bg-gray-50 mb-6">
+            <!-- 輪盤指示器 -->
+            <div class="absolute inset-y-0 left-0 w-1/12 bg-red-500/30 z-10 flex items-center justify-center">
+                <div class="w-3 h-3 bg-red-600 rounded-full shadow-lg"></div>
+            </div>
+            <div class="absolute inset-y-0 right-0 w-1/12 bg-red-500/30 z-10 flex items-center justify-center">
+                <div class="w-3 h-3 bg-red-600 rounded-full shadow-lg"></div>
+            </div>
+
+            <!-- 玩偶列表 -->
+            <ul id="dollList" class="h-full overflow-y-scroll transition-all duration-500 ease-out py-10" style="scroll-snap-type: y mandatory;">
+                <!-- 列表項目將由 JS 填充 -->
+            </ul>
+        </div>
+
+        <!-- 按鈕與結果區域 -->
+        <div class="flex flex-col items-center">
+            <!-- 抽籤數量選擇器 -->
+            <div class="mb-4 flex items-center space-x-3 bg-white p-3 rounded-lg border border-gray-300 shadow-sm">
+                <label for="quantityInput" class="text-gray-700 font-medium">抽出數量:</label>
+                <input type="number" id="quantityInput" value="2" min="1" max="15" 
+                       class="w-16 p-1 text-center border border-gray-400 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+
+            <button id="spinButton"
+                    class="w-full md:w-2/3 lg:w-1/2 py-3 px-6 text-xl font-semibold rounded-full bg-purple-600 text-white shadow-lg transition-all duration-300 hover:bg-purple-700 hover:shadow-xl disabled:bg-gray-400 disabled:cursor-not-allowed transform hover:scale-105"
+                    onclick="startSpin()">
+                開始抽籤！
+            </button>
+
+            <!-- 結果顯示區 -->
+            <div id="resultArea" class="mt-8 w-full">
+                <h2 class="text-2xl font-semibold text-center text-gray-700 mb-4">
+                    🎉 幸運中選的ぬいぐるみ是...
+                </h2>
+                <div id="selectionResult" class="min-h-[6rem] p-4 border-4 border-dashed border-yellow-400/50 rounded-xl flex flex-wrap gap-2 justify-center items-center bg-yellow-50">
+                    <p class="text-gray-500 text-lg">按下按鈕開始決定！</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 玩偶數據列表 (底部參考) -->
+        <div id="dataReference" class="mt-8 pt-4 border-t border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-600 mb-2">
+                總收藏清單 (共 <span id="currentDollCount">0</span> 隻)
+            </h3>
+            <ul id="fullList" class="text-sm text-gray-500 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <!-- 列表將在 JS 中填充 -->
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // 1. 玩偶數據的本地儲存鍵
+        const STORAGE_KEY = 'gscRouletteDolls';
+
+        // 2. 預設玩偶數據 (已修正 Ave Mujica 團服名稱)
+        const DEFAULT_DOLLS = [
+            // MyGO!!!!! (制服)
+            { name: "高松燈", band: "MyGO!!!!!", series: "制服" },
+            { name: "椎名立希", band: "MyGO!!!!!", series: "制服" },
+            { name: "千早愛音", band: "MyGO!!!!!", series: "制服" },
+            { name: "長崎爽世", band: "MyGO!!!!!", series: "制服" },
+            { name: "要樂奈", band: "MyGO!!!!!", series: "制服" },
+            
+            // Ave Mujica (團服) - 修正 Dolce -> Doloris, Morta -> Mortis
+            { name: "Doloris", band: "Ave Mujica", series: "團服" },
+            { name: "Timoris", band: "Ave Mujica", series: "團服" },
+            { name: "Mortis", band: "Ave Mujica", series: "團服" },
+            { name: "Amoris", band: "Ave Mujica", series: "團服" },
+            { name: "Oblivionis", band: "Ave Mujica", series: "團服" },
+            
+            // Ave Mujica (制服) - 修正 祐天寺若菜 -> 祐天寺にゃむ
+            { name: "三角初華", band: "Ave Mujica", series: "制服" },
+            { name: "若葉睦", band: "Ave Mujica", series: "制服" },
+            { name: "八幡海鈴", band: "Ave Mujica", series: "制服" },
+            { name: "祐天寺にゃむ", band: "Ave Mujica", series: "制服" }, /* <-- 修正此處名稱 */
+            { name: "豐川祥子", band: "Ave Mujica", series: "制服" },
+        ];
+
+        // 3. 佔位符：將所有 DOM 元素宣告為 let，以便在 window.onload 內賦值
+        let dollListEl, spinButtonEl, selectionResultEl, fullListEl, editableListEl;
+        let dollNameInputEl, dollBandInputEl, dollSeriesInputEl, quantityInputEl;
+        let dollCountTextEl, currentDollCountEl, editorContentEl, editToggleEl;
+        let filterCheckboxesEl, filterContentEl, filterToggleEl;
+        
+        let currentDolls = []; 
+        let filteredDolls = []; 
+        let dollSelectionState = {}; 
+
+        // --- 工具函數 ---
+
+        function getDollId(doll) {
+            // 使用 band, name 和 series 建立一個唯一的識別碼
+            return `${doll.band}-${doll.name}-${doll.series}`;
+        }
+        
+        function getDollByUID(uid) {
+            // 從 currentDolls 中尋找對應 UID 的玩偶物件
+            return currentDolls.find(d => getDollId(d) === uid);
+        }
+
+        // --- 玩偶清單儲存與載入功能 ---
+
+        // 儲存清單到 localStorage
+        function saveDolls() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(currentDolls));
+            } catch (e) {
+                console.error("無法儲存玩偶清單到 localStorage:", e);
+            }
+            // 由於清單變動，需要重新初始化選中狀態，確保新玩偶被選中
+            initializeSelectionState();
+            
+            // 顯式更新 filteredDolls
+            filteredDolls = currentDolls.filter(doll => dollSelectionState[getDollId(doll)]);
+            
+            // 儲存後立即重新渲染
+            renderAllLists();
+        }
+
+        // 從 localStorage 載入清單
+        function loadDolls() {
+            let shouldInitialize = true;
+            try {
+                const storedDolls = localStorage.getItem(STORAGE_KEY);
+                if (storedDolls) {
+                    currentDolls = JSON.parse(storedDolls);
+                    
+                    // 檢查舊數據結構是否需要轉換
+                    if (currentDolls.length > 0 && !currentDolls[0].band) {
+                         console.warn("Detected old data structure, resetting to default.");
+                         currentDolls = DEFAULT_DOLLS;
+                    } else {
+                        shouldInitialize = false; // 成功載入，不需要重設選中狀態
+                    }
+                } else {
+                    currentDolls = DEFAULT_DOLLS;
+                }
+            } catch (e) {
+                console.error("無法載入玩偶清單，使用預設值:", e);
+                currentDolls = DEFAULT_DOLLS;
+            }
+            
+            // 只有在首次載入或重設時才初始化選中狀態
+            if (shouldInitialize) {
+                initializeSelectionState();
+            }
+        }
+        
+        // 初始化選擇狀態
+        function initializeSelectionState() {
+            // 預設將所有玩偶設為選中
+            dollSelectionState = {};
+            currentDolls.forEach(doll => {
+                dollSelectionState[getDollId(doll)] = true;
+            });
+        }
+
+        // --- 編輯器功能 ---
+
+        // 新增玩偶
+        function addDoll() {
+            const name = dollNameInputEl.value.trim();
+            const band = dollBandInputEl.value.trim() || '未分組';
+            const series = dollSeriesInputEl.value.trim() || '其他系列';
+
+            if (name) {
+                // 檢查是否已存在相同 ID 的玩偶
+                const newDoll = { name, band, series };
+                if (currentDolls.some(d => getDollId(d) === getDollId(newDoll))) {
+                    // 請注意：在生產環境中應該使用自定義 modal 替代 alert
+                    alert('此玩偶已存在於清單中！'); 
+                    return;
+                }
+                
+                currentDolls.push(newDoll);
+                dollNameInputEl.value = '';
+                dollBandInputEl.value = '';
+                dollSeriesInputEl.value = '';
+                
+                // 新增視覺回饋
+                const addButton = document.getElementById('addDollButton');
+                const originalText = addButton.textContent;
+                
+                addButton.textContent = '已新增!';
+                addButton.classList.remove('bg-purple-500', 'hover:bg-purple-600');
+                addButton.classList.add('bg-green-500', 'hover:bg-green-600');
+                
+                setTimeout(() => {
+                    addButton.textContent = originalText;
+                    addButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    addButton.classList.add('bg-purple-500', 'hover:bg-purple-600');
+                }, 1000);
+                
+                // 新增後呼叫 saveDolls()，它會處理初始化和渲染
+                saveDolls(); 
+            }
+        }
+
+        // 刪除玩偶 (通過索引)
+        function deleteDoll(index) {
+            currentDolls.splice(index, 1);
+            saveDolls();
+        }
+
+        // 渲染可編輯的清單
+        function renderEditableList() {
+            editableListEl.innerHTML = currentDolls.map((doll, index) => 
+                `<li class="flex justify-between items-center py-1">
+                    <span class="text-gray-800 text-sm font-medium truncate">${doll.name} (${doll.band} / ${doll.series})</span>
+                    <button onclick="deleteDoll(${index})" 
+                            class="text-red-500 text-xs font-semibold hover:text-red-700 transition duration-150 p-1 rounded-full hover:bg-red-100 flex-shrink-0">
+                        刪除
+                    </button>
+                </li>`
+            ).join('');
+        }
+        
+        // --- 篩選器 Checkbox 功能 ---
+
+        // 處理 Band 級別的 Checkbox 變動 (已修正: 確保 DOM 狀態與 JS 狀態同步)
+        function handleBandChange(band, isChecked) {
+            currentDolls.forEach(doll => {
+                if (doll.band === band) {
+                    const dollId = getDollId(doll);
+                    dollSelectionState[dollId] = isChecked;
+                    
+                    // 同步更新個別玩偶的 Checkbox DOM 狀態
+                    const dollCheckbox = document.getElementById(`doll-${dollId}`);
+                    if (dollCheckbox) {
+                        dollCheckbox.checked = isChecked;
+                        // 確保移除 indeterminate 狀態
+                        dollCheckbox.indeterminate = false; 
+                    }
+                }
+            });
+            updateFilteredDolls();
+        }
+
+        // 處理 Individual Doll 級別的 Checkbox 變動 (已修正: 處理 indeterminate 狀態)
+        function handleDollChange(dollId, isChecked) {
+            dollSelectionState[dollId] = isChecked;
+            const doll = getDollByUID(dollId);
+
+            if (doll) {
+                const bandDolls = currentDolls.filter(d => d.band === doll.band);
+                const checkedCount = bandDolls.filter(d => dollSelectionState[getDollId(d)]).length;
+                const totalCount = bandDolls.length;
+
+                const bandCheckbox = document.getElementById(`band-${doll.band}`);
+                if (bandCheckbox) {
+                    if (checkedCount === totalCount) {
+                        // 全部選中
+                        bandCheckbox.checked = true;
+                        bandCheckbox.indeterminate = false;
+                    } else if (checkedCount > 0) {
+                        // 部分選中
+                        bandCheckbox.checked = false;
+                        bandCheckbox.indeterminate = true; // 設置為部分選中狀態
+                    } else {
+                        // 全部未選中
+                        bandCheckbox.checked = false;
+                        bandCheckbox.indeterminate = false;
+                    }
+                }
+            }
+            updateFilteredDolls();
+        }
+
+        // 渲染篩選器 Checkbox
+        function renderFilterCheckboxes() {
+            if (!filterCheckboxesEl) {
+                console.error("filterCheckboxesEl is not defined. Cannot render checkboxes.");
+                return;
+            }
+
+            // 按 Band 分組玩偶
+            const dollsByBand = currentDolls.reduce((acc, doll) => {
+                if (!acc[doll.band]) {
+                    acc[doll.band] = [];
+                }
+                acc[doll.band].push(doll);
+                return acc;
+            }, {});
+
+            let html = '';
+            for (const band in dollsByBand) {
+                const bandDolls = dollsByBand[band];
+                
+                // 檢查該 Band 的選中狀態 (用於 Master Checkbox 的初始化)
+                const checkedCount = bandDolls.filter(doll => dollSelectionState[getDollId(doll)]).length;
+                const totalCount = bandDolls.length;
+                const isChecked = checkedCount === totalCount;
+                // const isIndeterminate = checkedCount > 0 && checkedCount < totalCount; // 在此處計算但不使用，在 JS 中手動設置
+
+                // Band Master Checkbox (注意：indeterminate 必須在 JS 中設置)
+                html += `
+                    <div class="bg-white p-3 rounded-lg shadow-sm border border-indigo-300">
+                        <label class="flex items-center space-x-2 font-bold text-indigo-800 cursor-pointer">
+                            <input type="checkbox" 
+                                   id="band-${band}" 
+                                   onchange="handleBandChange('${band}', this.checked)"
+                                   ${isChecked ? 'checked' : ''}
+                                   class="form-checkbox h-5 w-5 text-indigo-600 rounded">
+                            <span>${band} (${bandDolls.length} 隻)</span>
+                        </label>
+                        <!-- 修正 1: 確保手機上能顯示 2 欄，文字不被截斷 -->
+                        <div class="grid grid-cols-2 lg:grid-cols-3 gap-2 mt-2 ml-4 border-t pt-2 border-indigo-100">
+                `;
+                
+                // Individual Doll Checkboxes
+                bandDolls.forEach(doll => {
+                    const dollId = getDollId(doll);
+                    const isDollChecked = dollSelectionState[dollId];
+                    html += `
+                        <label class="flex items-start space-x-1 text-sm text-gray-700 cursor-pointer p-1">
+                            <input type="checkbox" 
+                                   id="doll-${dollId}" 
+                                   onchange="handleDollChange('${dollId}', this.checked)"
+                                   ${isDollChecked ? 'checked' : ''}
+                                   class="form-checkbox h-4 w-4 text-purple-600 rounded mt-1 flex-shrink-0">
+                            <!-- 修正 1: 移除 truncate，讓文字自動換行 -->
+                            <span class="break-words">${doll.name} (${doll.series})</span>
+                        </label>
+                    `;
+                });
+
+                html += `</div></div>`;
+            }
+
+            filterCheckboxesEl.innerHTML = html;
+            
+            // === 修正 3: 手動設置 Master Checkbox 的 indeterminate 狀態 (確保邏輯正確) ===
+            for (const band in dollsByBand) {
+                const bandDolls = dollsByBand[band];
+                const checkedCount = bandDolls.filter(doll => dollSelectionState[getDollId(doll)]).length;
+                const totalCount = bandDolls.length;
+                
+                const bandCheckbox = document.getElementById(`band-${band}`);
+                if (bandCheckbox) {
+                    if (checkedCount > 0 && checkedCount < totalCount) {
+                        bandCheckbox.indeterminate = true;
+                    } else {
+                        bandCheckbox.indeterminate = false;
+                    }
+                }
+            }
+        }
+
+        // 根據 dollSelectionState 更新 filteredDolls
+        function updateFilteredDolls() {
+            filteredDolls = currentDolls.filter(doll => dollSelectionState[getDollId(doll)]);
+            renderAllLists(false); // 僅更新列表和計數器，不需重繪 Checkbox
+        }
+
+
+        // --- 渲染與初始化功能 ---
+
+        // 渲染所有列表和計數器
+        function renderAllLists(shouldRenderCheckboxes = true) {
+            const count = filteredDolls.length; // 數量基於篩選結果
+            const totalCount = currentDolls.length; // 總數基於所有玩偶
+
+            // 1. 如果有玩偶新增/刪除，需要重繪 Checkbox
+            if (shouldRenderCheckboxes) {
+                renderFilterCheckboxes();
+            }
+
+            // 2. 更新輪盤頂部文字
+            dollCountTextEl.textContent = `從 ${count} 隻ぬいぐるみ中，抽出今天要帶出門的幸運兒！ (總收藏: ${totalCount} 隻)`;
+            
+            // 3. 更新底部清單計數
+            currentDollCountEl.textContent = totalCount;
+            
+            // 4. 更新數量輸入框的最大值
+            quantityInputEl.max = count;
+            // 如果輸入值大於新的最大值，則重設
+            if (parseInt(quantityInputEl.value) > count) {
+                quantityInputEl.value = count > 0 ? 1 : 0;
+            }
+
+            // 5. 渲染輪盤列表 (修正 4: 只渲染一組玩偶清單)
+            if (count > 0) {
+                // 輪盤列表只渲染一次 filteredDolls
+                dollListEl.innerHTML = filteredDolls.map((doll, index) => 
+                    `<li id="doll-${index}" style="scroll-snap-align: center;" class="text-center p-2 text-xl font-medium text-gray-600 border-b border-gray-100 h-10 flex items-center justify-center transition-colors duration-200">
+                        <span class="font-bold text-gray-700">${doll.name}</span> <span class="text-sm text-purple-400 ml-2">(${doll.band} / ${doll.series})</span>
+                    </li>`
+                ).join('');
+                spinButtonEl.disabled = false;
+            } else {
+                dollListEl.innerHTML = `<li class="text-center p-4 text-gray-500">沒有符合條件的ぬいぐるみ參與抽籤。</li>`;
+                spinButtonEl.disabled = true;
+            }
+
+
+            // 6. 渲染底部參考清單 (使用 currentDolls)
+            fullListEl.innerHTML = currentDolls.map(doll => 
+                `<li class="p-1 bg-gray-100 rounded text-xs text-gray-700">
+                    ${doll.name} (${doll.band}/${doll.series})
+                </li>`
+            ).join('');
+            
+            // 7. 渲染可編輯清單
+            renderEditableList();
+        }
+        
+        // 編輯器內容開關
+        function toggleEditor() {
+            const isHidden = editorContentEl.classList.toggle('hidden');
+            editToggleEl.textContent = isHidden ? '[顯示]' : '[隱藏]';
+        }
+        
+        // 篩選器內容開關 (新增函式)
+        function toggleFilter() {
+            const isHidden = filterContentEl.classList.toggle('hidden');
+            filterToggleEl.textContent = isHidden ? '[顯示]' : '[隱藏]';
+        }
+        
+        // 修正 5: 移除循環滾動邏輯，因為現在只顯示一組
+        function handleWheelScroll(e) {
+            // 由於不再是三段列表，不需要無限循環邏輯
+            return;
+        }
+
+        // --- 輪盤核心功能 ---
+        
+        function startSpin() {
+            const totalDolls = filteredDolls.length;
+            let quantity = parseInt(quantityInputEl.value);
+
+            // 確保抽籤數量有效
+            if (isNaN(quantity) || quantity < 1) {
+                quantity = 1;
+                quantityInputEl.value = 1;
+            }
+            if (quantity > totalDolls) {
+                // 如果要抽的數量大於總數，則抽總數
+                quantity = totalDolls;
+                quantityInputEl.value = totalDolls;
+            }
+            if (totalDolls === 0) {
+                selectionResultEl.innerHTML = '<p class="text-red-500 font-semibold text-lg">清單為空！請先新增ぬいぐるみ或勾選參與抽籤的玩偶。</p>';
+                return;
+            }
+            
+            // 禁用按鈕
+            spinButtonEl.disabled = true;
+            spinButtonEl.textContent = '決定中...';
+            selectionResultEl.innerHTML = `<p class="text-purple-600 font-semibold text-lg animate-pulse">輪盤啟動，結果即將揭曉...</p>`;
+            
+            // 移除所有舊的高亮
+            document.querySelectorAll('#dollList li').forEach(li => {
+                li.classList.remove('bg-yellow-200', 'text-black', 'ring-4', 'ring-yellow-500', 'font-extrabold');
+                li.classList.add('text-gray-600');
+            });
+            
+            // 隨機選擇 N 個不重複的索引
+            const selectedIndices = [];
+            while (selectedIndices.length < quantity) {
+                const randomIndex = Math.floor(Math.random() * totalDolls);
+                if (!selectedIndices.includes(randomIndex)) {
+                    selectedIndices.push(randomIndex);
+                }
+            }
+            
+            const selectedDolls = selectedIndices.map(index => filteredDolls[index]); // 從 filteredDolls 中取出結果
+
+            // 計算目標滾動位置 (定位到選定玩偶)
+            const itemHeight = dollListEl.querySelector('li').offsetHeight;
+            const targetIndex = selectedIndices[0]; // 只用第一個選定的玩偶來定位，然後高亮所有結果
+            
+            // 步驟 1: 重置到列表開頭 (確保滾動動畫的起點一致)
+            dollListEl.scrollTop = 0;
+            
+            // 步驟 2: 啟動動畫 (給予視覺上的快速滾動感)
+            dollListEl.classList.add('spinning');
+            
+            // 計算最終停止滾動位置 (將選定項目停在可見範圍中央)
+            const targetScroll = targetIndex * itemHeight - (dollListEl.clientHeight / 2) + (itemHeight / 2);
+
+            // 設定一個長計時器，模擬輪盤滾動後停止
+            setTimeout(() => {
+                // 步驟 3: 停止 CSS 動畫
+                dollListEl.classList.remove('spinning');
+                
+                // 步驟 4: 平滑滾動到最終目標位置
+                dollListEl.scrollTo({
+                    top: targetScroll,
+                    behavior: 'smooth'
+                });
+
+                // 停止後，開始高亮結果
+                setTimeout(() => showResult(selectedDolls), 1000); // 1秒後顯示結果
+
+            }, 4000); // 滾動 4 秒
+        }
+
+        // 5. 顯示結果
+        function showResult(selectedDolls) {
+            selectionResultEl.innerHTML = `
+                <p class="w-full text-2xl font-extrabold text-red-600 animate-bounce mb-3">就是這 ${selectedDolls.length} 位！</p>
+                ${selectedDolls.map(doll => `
+                    <div class="bg-white p-2 rounded-lg shadow-md border-2 border-yellow-500 text-center w-full sm:w-5/12">
+                        <span class="text-xl font-bold text-gray-900">${doll.name}</span>
+                        <span class="text-base text-purple-600 ml-2 block sm:inline">(${doll.band} / ${doll.series})</span>
+                    </div>
+                `).join('')}
+            `;
+            
+            // 高亮結果
+            selectedDolls.forEach(doll => {
+                const dollId = getDollId(doll);
+                // 找到 filteredDolls 中對應 UID 的索引
+                const originalIndex = filteredDolls.findIndex(d => getDollId(d) === dollId);
+                
+                // 由於現在只渲染一組，所以直接使用原始索引
+                const targetId = `doll-${originalIndex}`;
+                const targetEl = document.getElementById(targetId);
+
+                if (targetEl) {
+                    targetEl.classList.remove('text-gray-600');
+                    targetEl.classList.add('bg-yellow-200', 'text-black', 'ring-4', 'ring-yellow-500', 'font-extrabold');
+                }
+            });
+
+            // 重新啟用按鈕
+            spinButtonEl.disabled = false;
+            spinButtonEl.textContent = '再次抽籤！';
+        }
+
+        // 6. 初始化應用程式
+        window.onload = function() {
+            // === 修正：將所有 DOM 元素獲取移到 window.onload 內 ===
+            dollListEl = document.getElementById('dollList');
+            spinButtonEl = document.getElementById('spinButton');
+            selectionResultEl = document.getElementById('selectionResult');
+            fullListEl = document.getElementById('fullList');
+            editableListEl = document.getElementById('editableList');
+            dollNameInputEl = document.getElementById('dollNameInput');
+            dollBandInputEl = document.getElementById('dollBandInput');
+            dollSeriesInputEl = document.getElementById('dollSeriesInput');
+            quantityInputEl = document.getElementById('quantityInput');
+            dollCountTextEl = document.getElementById('dollCountText');
+            currentDollCountEl = document.getElementById('currentDollCount');
+            editorContentEl = document.getElementById('editorContent');
+            editToggleEl = document.getElementById('editToggle');
+            filterCheckboxesEl = document.getElementById('filterCheckboxes');
+            filterContentEl = document.getElementById('filterContent');
+            filterToggleEl = document.getElementById('filterToggle');
+            
+            loadDolls();
+            initializeSelectionState(); 
+            
+            // *** 確保 Filter Checkbox 初始渲染 ***
+            if (filterCheckboxesEl) {
+                renderFilterCheckboxes();
+            }
+            
+            updateFilteredDolls(); 
+            
+            // 預設隱藏編輯器內容
+            if (editorContentEl && editToggleEl) {
+                editorContentEl.classList.add('hidden');
+                editToggleEl.textContent = '[顯示]';
+                editToggleEl.onclick = toggleEditor;
+            }
+            
+            // 預設隱藏篩選器內容
+            if (filterContentEl && filterToggleEl) {
+                filterContentEl.classList.add('hidden');
+                filterToggleEl.textContent = '[顯示]';
+                filterToggleEl.addEventListener('click', toggleFilter); 
+            }
+            
+            // === 修正 5: 移除循環滾動事件綁定 ===
+            if (dollListEl) {
+                // 移除原有的滾動和滾輪事件處理邏輯
+                // dollListEl.addEventListener('scroll', handleWheelScroll);
+                // dollListEl.addEventListener('wheel', ...); 
+                // 只需讓瀏覽器處理原生的 overflow: auto 即可
+            }
+            
+            // 處理 Enter 鍵提交
+            dollNameInputEl.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') { addDoll(); }
+            });
+            dollBandInputEl.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') { addDoll(); }
+            });
+            dollSeriesInputEl.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') { addDoll(); }
+            });
+        };
+    </script>
+</body>
+</html>
